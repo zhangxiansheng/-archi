@@ -1,3 +1,5 @@
+#coding=utf-8
+
 import cv2,cv
 import numpy as np
 import coconut as co
@@ -10,6 +12,7 @@ import math
 #<"numpy.ndarray">.dtype = unit8 (0-255)
 #<"numpy.ndarray">.shape = (width, height, <3 is the Count of BGR>)
 def open_image(address):
+    '''打开图像为numpy.ndarray类型矩阵'''
     return cv2.imread(address)
 
 
@@ -18,6 +21,7 @@ def open_image(address):
 #input1 shape<"tuple"> = <"numpy.ndarray">.shape = (width, height, <3 is the Count of BGR>)
 #input2 color<"int"> = 0-255
 def create_paper(shape, color=0):
+    '''根据长宽与颜色来预设生成一张画布'''
     return np.zeros(shape, np.uint8) + color
 
 
@@ -27,6 +31,7 @@ def create_paper(shape, color=0):
 #output_image.shape = (width, height)
 #input <"numpy.ndarray"> and output <"numpy.ndarray">
 def get_gray_image(image):
+    '''将彩色图像转换成灰度图像'''
     return cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
 
 
@@ -35,12 +40,14 @@ def get_gray_image(image):
 #output cornerlists=[cornerlist1,cornerlist2...]
 #cornerlist[i]=[(x1,y1), (x2,y2), (x3,y3)...]
 def get_contour_cornerlists(img_gray, img_draw=None):
+    '''根据灰度图片识别出所有的内轮廓的点集'''
     cornerlists = []
     ret, thresh = cv2.threshold(img_gray, 127, 255, cv2.THRESH_BINARY)
     contours, hierarchy = cv2.findContours(thresh,2,1)
     for kk in range(len(contours)):
         cnt = contours[kk]
-        if len(cnt)>100:
+        #100 or 70 forbid the rubbish
+        if len(cnt)>70:
             if hierarchy[0][kk][0] == -1:
                 break
             zywcorners = []
@@ -64,12 +71,13 @@ def get_contour_cornerlists(img_gray, img_draw=None):
 #input a contour list [(x1,y1), (x2,y2)...]
 #output rectangle<"list"> [center(x,y),size(width,height),angle]
 def get_rectangle(contour):
+    '''根据一个矩形内轮廓角点集识别出此矩形'''
     rect = cv.MinAreaRect2(contour)
     #get the uniform angle
     if rect[2]<-45:
-        rect = [rect[0],rect[1],rect[2]+90]
+        rect = [rect[0],(rect[1][1],rect[1][0]),rect[2]+90]
     elif rect[2]>45:
-        rect = [rect[0],rect[1],rect[2]-90]
+        rect = [rect[0],(rect[1][1],rect[1][0]),rect[2]-90]
     else:
         rect = [rect[0],rect[1],rect[2]]
     return rect
@@ -80,6 +88,7 @@ def get_rectangle(contour):
 #output's every rect is not a list but a tuple
 #recti = (center(x,y), size(width,height), angle_adjusted)
 def machine_classify(rectangles):
+    '''根据矩形的角度对矩形进行角度优化与分类'''
     angle_gap = 12 #
     rects = []
     angles = []
@@ -112,6 +121,7 @@ def machine_classify(rectangles):
 #output <"list"> = [ [rect1,rect2...], [rect8, rect9..]..]
 #output recti = (point1, point2, point3, point4)
 def machine_optimize(rectangles):
+    '''对列表中的矩形进行边角重合并线优化'''
     #get four points of rectangles
     four_points = []
     for rectangle_list in rectangles:
@@ -133,6 +143,8 @@ def machine_optimize(rectangles):
 #input recti = (point1, point2, point3, point4)
 #output <"list"> = [rect1_adjusted,rect2_adjusted...]
 def adjust_rect_list(angle, rectangle_list):
+    '''边角重合并线优化的核心处理函数（重要）'''
+    
     #input gap_on_y
     #hide_input <"list"> = [ a1, a2 ,a3 ...]
     #output <"list"> = [ <[a1,a2...]>, <[a11, a12..]> ..]
@@ -158,7 +170,7 @@ def adjust_rect_list(angle, rectangle_list):
         crossing_y.append( [co.crossy(angle, rect[0]), sum] ) #up
         crossing_y.append( [co.crossy(angle, rect[1]),-sum] ) #down
     
-    #classify the crossing_y########################
+    #classify the crossing_y########################【横线与横线间的误差】@@@
     rails_on_y = machine_classify_crossing_y( 3 )
     #adjust the crossing_y
     for rail in rails_on_y:
@@ -199,7 +211,7 @@ def adjust_rect_list(angle, rectangle_list):
         crossing_x.append( [co.crossx(angle+90, rect[1]), sum] ) #left
         crossing_x.append( [co.crossx(angle+90, rect[2]),-sum] ) #right
 
-    #classify the crossing_x########################
+    #classify the crossing_x########################【竖线与竖线间的误差】@@@
     rails_on_x = machine_classify_crossing_x( 3 )
     #adjust the crossing_x
     for rail in rails_on_x:
@@ -218,6 +230,7 @@ def adjust_rect_list(angle, rectangle_list):
 
 #black and white
 def black_and_white(img, step=200):
+    '''将图像黑白二值化【临时函数，将来可能会删除】'''
     for i in range(len(img)):
         for j in range(len(img[i])):
             if img[i][j]<step:
@@ -228,6 +241,7 @@ def black_and_white(img, step=200):
 
 #expand
 def expand(img, color, step=3):
+    '''将图像的一种颜色进行膨胀扩张step个像素点【临时函数，将来可能会删除】'''
     if color == "black":c1,c2 = 255, 0
     else:c1,c2 =0, 255
     img_paper = create_paper(img.shape, c1)
@@ -241,8 +255,12 @@ def expand(img, color, step=3):
 
 
 
-
+#input angle<"float">
+#input rectangle_list<"list> [rect1, rect2 ...]
+#input img1<"numpy.ndarray">
 def draw_test(angle, rectangle_list, img1):
+    '''画出识别的结果，测试之用【临时函数，将来可能会删除】'''
+    
     def tutu(p):
         return (p[0],p[1])
 
@@ -274,38 +292,34 @@ def draw_test(angle, rectangle_list, img1):
 
 
 ###Begin the main project###
+###Just have a test###
+if __name__ == "__main__":
+    img = open_image('./t1.png')
+    img_black_paper = create_paper(img.shape)
+    img_gray = get_gray_image(img)
 
-img = open_image('/Users/zyw/t2.png')
-img_black_paper = create_paper(img.shape)
-img_gray = get_gray_image(img)
+    #img_gray = expand(expand(black_and_white( img_gray ), "black" , 3 ), "white" , 3)
 
-img_gray = expand(expand(black_and_white( img_gray ), "black" ), "white")
+    contours = get_contour_cornerlists(img_gray,img)
 
-contours = get_contour_cornerlists(img_gray,img)
+    rectangles = []
+    for contour in contours:
+        rectangles.append( get_rectangle(contour) )
 
-rectangles = []
-for contour in contours:
-    rectangles.append( get_rectangle(contour) )
+    #angle adjust
+    rectangles = machine_classify( rectangles )
 
-#angle adjust
-rectangles = machine_classify( rectangles )
+    #get the side_point_adjusted four_point_rect
+    rectangles_four_points = machine_optimize( rectangles )
 
-#get the side_point_adjusted four_point_rect
-rectangles_four_points = machine_optimize( rectangles )
+    for i in xrange(len(rectangles)):
+        draw_test(rectangles[i][0][2], rectangles_four_points[i], img_black_paper)
 
-
-draw_test(rectangles[0][0][2], rectangles_four_points[0], img_black_paper)#
-
-
-
-
-
-
-cv2.namedWindow('img')
-cv2.imshow('img',img_gray)
-cv2.namedWindow('img2')
-cv2.imshow('img2',img)
-cv2.namedWindow('img1')
-cv2.imshow('img1',img_black_paper)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+    cv2.namedWindow('img')
+    cv2.imshow('img',img_gray)
+    cv2.namedWindow('img2')
+    cv2.imshow('img2',img)
+    cv2.namedWindow('img1')
+    cv2.imshow('img1',img_black_paper)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
