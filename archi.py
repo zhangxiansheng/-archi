@@ -386,8 +386,8 @@ if __name__ == "__main__":
     img_gray = get_gray_image(img)
     img_close = close_gap(img_gray, 3)
   
-    set_deviation_x(4)
-    set_deviation_y(4)
+    set_deviation_x(3)
+    set_deviation_y(3)
     contours = get_contour_cornerlists(img_close, img)
 
     rectangles = []
