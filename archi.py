@@ -5,6 +5,48 @@ import numpy as np
 import coconut as co
 import math
 
+LIMIT_CAUGHT = 70
+DEVIATION_BETWEEN_X = 3
+DEVIATION_BETWEEN_Y = 3
+ANGLE_GAP = 12
+
+#input <"int">
+def set_limit_caught(new_limit):
+    '''重新指定识别轮廓的识别下限'''
+    global LIMIT_CAUGHT
+    LIMIT_CAUGHT = new_limit
+
+
+#input <"float"> or <"int">
+def set_deviation_x(new_deviation_x):
+    '''重新指定识别横线与横线之间的误差距离'''
+    global DEVIATION_BETWEEN_X
+    DEVIATION_BETWEEN_X = new_deviation_x
+
+
+#input <"float"> or <"int">
+def set_deviation_y(new_deviation_y):
+    '''重新指定识别纵线与纵线之间的误差距离'''
+    global DEVIATION_BETWEEN_Y
+    DEVIATION_BETWEEN_Y = new_deviation_y
+
+
+#input <"float"> or <"int">
+def set_deviation(new_deviation_x, new_deviation_y):
+    '''一次性重新指定识别横纵误差距离'''
+    global DEVIATION_BETWEEN_X, DEVIATION_BETWEEN_Y
+    DEVIATION_BETWEEN_X = new_deviation_x
+    DEVIATION_BETWEEN_Y = new_deviation_y
+
+
+
+#input <"float"> or <"int">
+#best between 0-20 degree
+def set_angle_gap(new_angle_gap):
+    '''重新指定角度分类的角度度数误差值'''
+    global ANGLE_GAP
+    ANGLE_GAP = new_angle_gap
+
 
 #open an image as <"numpy.ndarray">
 #input address<"string">
@@ -16,6 +58,14 @@ def open_image(address):
     return cv2.imread(address)
 
 
+#save <"numpy.ndarray"> as an image
+#input output_address<"string">
+#input image<"numpy.ndarray">
+def save_image(address,img):
+    '''将numpy.ndarray类型的图像保存成硬图像文件'''
+    cv2.imwrite(address,img)
+
+
 #copy img.shape to create a vain paper
 #0 mains Black and 255 mains White
 #input1 shape<"tuple"> = <"numpy.ndarray">.shape = (width, height, <3 is the Count of BGR>)
@@ -25,14 +75,56 @@ def create_paper(shape, color=0):
     return np.zeros(shape, np.uint8) + color
 
 
+#input image <"numpy.ndarray">
+#image.shape = (width, height) or (width, height, 3)
+#input threshold_value <"int"> 0-255 or <"unit8">
+#output black_and_white_image <"numpy.ndarray">
+#black_and_white_image.shape = (width, height, 3) (RGB)
+def get_black_and_white_image(image, threshold_value):
+    '''根据阈值将图像二值化处理，即将输入图像处理成黑白图像'''
+    ret,thresh = cv2.threshold(img, threshold_value, 255, cv2.THRESH_BINARY)
+    return thresh
+
+
 #input a colorful image
 #input_image.shape = (width, height, <3 is the Count of BGR>)
 #output a gray image
 #output_image.shape = (width, height)
 #input <"numpy.ndarray"> and output <"numpy.ndarray">
 def get_gray_image(image):
-    '''将彩色图像转换成灰度图像'''
+    '''将RGB格式图像转换成灰度图像'''
     return cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
+
+
+#input image <"numpy.ndarray">
+#output image <"numpy.ndarray">
+def get_thick(img, a):
+    '''腐蚀图像 = 加粗图像线条'''
+    #OpenCV定义的结构元素
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (a, a))
+    #腐蚀图像=加粗
+    eroded = cv2.erode(img, kernel)
+    return eroded
+
+
+#input image <"numpy.ndarray">
+#output image <"numpy.ndarray">
+def get_thin(img, a):
+    '''膨胀图像 = 变细图像线条'''
+    #OpenCV定义的结构元素
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (a, a))
+    #膨胀图像 = 变细
+    dilated = cv2.dilate(img, kernel)
+    return dilated
+
+
+#input image <"numpy.ndarray">
+#output image <"numpy.ndarray">
+def close_gap(img, a):
+    '''缝合缺口 = 先加粗a个单位，再变细a个单位'''
+    img_thick = get_thick(img, a)
+    img_thin = get_thin(img_thick, a)
+    return img_thin
 
 
 #input1 img_gray <"numpy.ndarray"> which shape is just (width, height)
@@ -41,13 +133,14 @@ def get_gray_image(image):
 #cornerlist[i]=[(x1,y1), (x2,y2), (x3,y3)...]
 def get_contour_cornerlists(img_gray, img_draw=None):
     '''根据灰度图片识别出所有的内轮廓的点集'''
+    global LIMIT_CAUGHT
     cornerlists = []
     ret, thresh = cv2.threshold(img_gray, 127, 255, cv2.THRESH_BINARY)
     contours, hierarchy = cv2.findContours(thresh,2,1)
     for kk in range(len(contours)):
         cnt = contours[kk]
-        #100 or 70 forbid the rubbish
-        if len(cnt)>70:
+        #set_limit_caught() can change the value of LIMIT_CAUGHT
+        if len(cnt) > LIMIT_CAUGHT:
             if hierarchy[0][kk][0] == -1:
                 break
             zywcorners = []
@@ -89,7 +182,9 @@ def get_rectangle(contour):
 #recti = (center(x,y), size(width,height), angle_adjusted)
 def machine_classify(rectangles):
     '''根据矩形的角度对矩形进行角度优化与分类'''
-    angle_gap = 12 #
+    #set_angle_gap() can change the value of ANGLE_GAP
+    global ANGLE_GAP
+    angle_gap = ANGLE_GAP #
     rects = []
     angles = []
     def dishave_angle(angle_test):
@@ -145,6 +240,8 @@ def machine_optimize(rectangles):
 def adjust_rect_list(angle, rectangle_list):
     '''边角重合并线优化的核心处理函数（重要）'''
     
+    global DEVIATION_BETWEEN_X, DEVIATION_BETWEEN_Y
+    
     #input gap_on_y
     #hide_input <"list"> = [ a1, a2 ,a3 ...]
     #output <"list"> = [ <[a1,a2...]>, <[a11, a12..]> ..]
@@ -170,15 +267,15 @@ def adjust_rect_list(angle, rectangle_list):
         crossing_y.append( [co.crossy(angle, rect[0]), sum] ) #up
         crossing_y.append( [co.crossy(angle, rect[1]),-sum] ) #down
     
-    #classify the crossing_y########################【横线与横线间的误差】@@@
-    rails_on_y = machine_classify_crossing_y( 3 )
+    #classify the crossing_y 横线与横线间的误差
+    #set_deviation_x() can change the value of DEVIATION_BETWEEN_X
+    rails_on_y = machine_classify_crossing_y( DEVIATION_BETWEEN_X )
     #adjust the crossing_y
     for rail in rails_on_y:
         if len(rail)>2:
-            #print rail#
             bb=rail[0]
             for i in range(len(rail)-1):
-                kk=abs(rail[i+1])-1 #zhiqianweil zhengfu guer jia1
+                kk=abs(rail[i+1])-1 #give back for before
                 if rail[i+1]>0: #up and down
                     rectangle_list[kk]=co.adjust(angle,bb,rectangle_list[kk],2)#up 0 3
                 else:
@@ -211,15 +308,15 @@ def adjust_rect_list(angle, rectangle_list):
         crossing_x.append( [co.crossx(angle+90, rect[1]), sum] ) #left
         crossing_x.append( [co.crossx(angle+90, rect[2]),-sum] ) #right
 
-    #classify the crossing_x########################【竖线与竖线间的误差】@@@
-    rails_on_x = machine_classify_crossing_x( 3 )
+    #classify the crossing_x 竖线与竖线间的误差
+    #set_deviation_y() can change the value of DEVIATION_BETWEEN_Y
+    rails_on_x = machine_classify_crossing_x( DEVIATION_BETWEEN_Y )
     #adjust the crossing_x
     for rail in rails_on_x:
         if len(rail)>2:
-            #print rail#
             bb=rail[0]
             for i in range(len(rail)-1):
-                kk=abs(rail[i+1])-1 #zhiqianweil zhengfu guer jia1
+                kk=abs(rail[i+1])-1 #give back for before
                 if rail[i+1]>0: #up and down
                     rectangle_list[kk]=co.adjust(angle+90,bb,rectangle_list[kk],3)#left 0 1
                 else:
@@ -227,17 +324,6 @@ def adjust_rect_list(angle, rectangle_list):
 
     return rectangle_list
 
-
-#black and white
-def black_and_white(img, step=200):
-    '''将图像黑白二值化【临时函数，将来可能会删除】'''
-    for i in range(len(img)):
-        for j in range(len(img[i])):
-            if img[i][j]<step:
-                img[i][j] = 0
-            else:
-                img[i][j] = 255
-    return img
 
 #expand
 def expand(img, color, step=3):
@@ -294,13 +380,15 @@ def draw_test(angle, rectangle_list, img1):
 ###Begin the main project###
 ###Just have a test###
 if __name__ == "__main__":
-    img = open_image('./t1.png')
+    img = open_image('./t1.jpg')
     img_black_paper = create_paper(img.shape)
+    #img_threshold = get_black_and_white_image(img, 200) #发现没有必要二值化处理
     img_gray = get_gray_image(img)
-
-    #img_gray = expand(expand(black_and_white( img_gray ), "black" , 3 ), "white" , 3)
-
-    contours = get_contour_cornerlists(img_gray,img)
+    img_close = close_gap(img_gray, 3)
+  
+    set_deviation_x(4)
+    set_deviation_y(4)
+    contours = get_contour_cornerlists(img_close, img)
 
     rectangles = []
     for contour in contours:
@@ -311,15 +399,16 @@ if __name__ == "__main__":
 
     #get the side_point_adjusted four_point_rect
     rectangles_four_points = machine_optimize( rectangles )
+    print rectangles_four_points
 
     for i in xrange(len(rectangles)):
         draw_test(rectangles[i][0][2], rectangles_four_points[i], img_black_paper)
 
-    cv2.namedWindow('img')
-    cv2.imshow('img',img_gray)
-    cv2.namedWindow('img2')
-    cv2.imshow('img2',img)
-    cv2.namedWindow('img1')
-    cv2.imshow('img1',img_black_paper)
+    save_image('result.jpg',img_black_paper)
+
+    cv2.namedWindow('img_close')
+    cv2.imshow('img',img_close)
+    cv2.namedWindow('img_result')
+    cv2.imshow('img_result',img_black_paper)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
