@@ -5,10 +5,12 @@ import numpy as np
 import coconut as co
 import math
 
+
 LIMIT_CAUGHT = 70
 DEVIATION_BETWEEN_X = 3
 DEVIATION_BETWEEN_Y = 3
 ANGLE_GAP = 12
+
 
 #input <"int">
 def set_limit_caught(new_limit):
@@ -37,7 +39,6 @@ def set_deviation(new_deviation_x, new_deviation_y):
     global DEVIATION_BETWEEN_X, DEVIATION_BETWEEN_Y
     DEVIATION_BETWEEN_X = new_deviation_x
     DEVIATION_BETWEEN_Y = new_deviation_y
-
 
 
 #input <"float"> or <"int">
@@ -125,6 +126,43 @@ def close_gap(img, a):
     img_thick = get_thick(img, a)
     img_thin = get_thin(img_thick, a)
     return img_thin
+
+
+#input a multiple-color image <"numpy.ndarray">
+#input N = K - 1 (K is K-means machine learning)
+#input N means how many meaningful colors except white
+#output a List of image <"numpy.ndarray">
+def separate_color( img, n ):
+    '''K-means方法进行色彩分离'''
+    k = n + 1
+    Z = img.reshape( (-1, 3) )
+    Z = np.float32( Z )
+    criteria = ( cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0 )
+    ret,label,center=cv2.kmeans( Z, k, criteria, 10, cv2.KMEANS_RANDOM_CENTERS )
+    
+    #find which is white
+    near_white = 120
+    near_i = None
+    for i in xrange(k):
+        if 255*3 - sum(center[i]) < near_white:
+            near_white = 255*3 - sum(center[i])
+            near_i = i
+    result_images_list = []
+    label_flatten = label.flatten()
+
+    #i means which color will be show
+    #j means which color is i
+    for i in xrange(k):
+        if i != near_i:
+            center_copy = center
+            for j in xrange(k):
+                if j == i: center_copy[j] = [0, 0, 0]
+                else: center_copy[j] = [255, 255, 255]
+            res = center_copy[ label_flatten ]
+            result_images_list.append( res.reshape(img.shape) )
+
+    return result_images_list
+
 
 
 #input1 img_gray <"numpy.ndarray"> which shape is just (width, height)
@@ -325,20 +363,29 @@ def adjust_rect_list(angle, rectangle_list):
     return rectangle_list
 
 
-#expand
-def expand(img, color, step=3):
-    '''将图像的一种颜色进行膨胀扩张step个像素点【临时函数，将来可能会删除】'''
-    if color == "black":c1,c2 = 255, 0
-    else:c1,c2 =0, 255
-    img_paper = create_paper(img.shape, c1)
-    for i in range(len(img))[step:-step]:
-        for j in range(len(img[i]))[step:-step]:
-            if img[i][j] == c2:
-                for ii in range(i+1+step)[i-step:]:
-                    for jj in range(j+1+step)[j-step:]:
-                        img_paper[ii][jj] = c2
-    return img_paper
+########## archi-ex ############################
+'''自定义模块'''
+########## archi-ex ############################
 
+#input a gray img <"numpy.ndarray">
+#input close_value is used to forbid some small crossing
+#output a set of tuples like ( center, radius )
+def get_circle_tree( img, close_value = 20 ):
+    '''识别点状树木图标'''
+    img = close_gap( img, close_value )
+    contours = get_contour_cornerlists( img )
+    rectangles = [ get_rectangle(contour) for contour in contours ]
+    circles = set( [ ( rect[0], max(rect[1])/2.0 ) for rect in rectangles ] )
+    return circles
+
+
+
+
+
+
+########## archi-draw ##########################
+'''绘图模块'''
+########## archi-draw ##########################
 
 
 #input angle<"float">
@@ -377,16 +424,22 @@ def draw_test(angle, rectangle_list, img1):
                 cv2.line(img1,intu(pp1),intu(pp2),(255,255,255),1)
 
 
+
 ###Begin the main project###
 ###Just have a test###
 if __name__ == "__main__":
-    img = open_image('./t1.jpg')
+    img = open_image('./cir.png')
     img_black_paper = create_paper(img.shape)
     #img_threshold = get_black_and_white_image(img, 200) #发现没有必要二值化处理
     img_gray = get_gray_image(img)
+    #test to get round
+    circle_tree_set = get_circle_tree( img_gray )
+    '''
+
     img_close = close_gap(img_gray, 3)
-  
-    set_deviation_x(3)
+    
+    
+        set_deviation_x(3)
     set_deviation_y(3)
     contours = get_contour_cornerlists(img_close, img)
 
@@ -403,12 +456,14 @@ if __name__ == "__main__":
 
     for i in xrange(len(rectangles)):
         draw_test(rectangles[i][0][2], rectangles_four_points[i], img_black_paper)
+    
 
     save_image('result.jpg',img_black_paper)
 
-    cv2.namedWindow('img_close')
-    cv2.imshow('img',img_close)
+    cv2.imshow('imgs',img)
+    cv2.imshow('img',img_gray)
     cv2.namedWindow('img_result')
     cv2.imshow('img_result',img_black_paper)
+    '''
     cv2.waitKey(0)
     cv2.destroyAllWindows()
