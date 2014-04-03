@@ -4,6 +4,7 @@ import cv2,cv
 import numpy as np
 import coconut as co
 import math
+import draw.sdxf
 
 
 LIMIT_CAUGHT = 70
@@ -179,7 +180,8 @@ def get_contour_cornerlists(img_gray, img_draw=None):
         cnt = contours[kk]
         #set_limit_caught() can change the value of LIMIT_CAUGHT
         if len(cnt) > LIMIT_CAUGHT:
-            if hierarchy[0][kk][0] == -1:
+            #-1是为了排除外轮廓，8或者写成不等于-1是为了排除内岛
+            if hierarchy[0][kk][0] == -1 or hierarchy[0][kk][3] != -1:
                 break
             zywcorners = []
             for i in range(len(cnt)-1):
@@ -363,29 +365,103 @@ def adjust_rect_list(angle, rectangle_list):
     return rectangle_list
 
 
+
 ########## archi-ex ############################
 '''自定义模块'''
 ########## archi-ex ############################
 
+
+
 #input a gray img <"numpy.ndarray">
 #input close_value is used to forbid some small crossing
+#recommended close_value = 20
+#if close_gap the img out of this def then set close_value 0
 #output a set of tuples like ( center, radius )
-def get_circle_tree( img, close_value = 20 ):
+def get_circle_tree( img, close_value = 20, img_show = None ):
     '''识别点状树木图标'''
-    img = close_gap( img, close_value )
-    contours = get_contour_cornerlists( img )
+    
+    #当直接没传入close_value而传入img_show的情况下
+    if isinstance(close_value, np.ndarray):
+        img_show = close_value
+        close_value = 20
+    
+    #当在函数外已经进行缺口闭合处理的情况下close_value为0
+    if close_value > 0:
+        img = close_gap( img, close_value )
+    
+    #如果传入了img_show则需要表现识别的过程线条到img_show上
+    if img_show:
+        contours = get_contour_cornerlists( img )
+    else:
+        contours = get_contour_cornerlists( img, img_show )
+
     rectangles = [ get_rectangle(contour) for contour in contours ]
     circles = set( [ ( rect[0], max(rect[1])/2.0 ) for rect in rectangles ] )
     return circles
 
 
+#input a gray img <"numpy.ndarray">
+#input close_value is used to forbid some small crossing
+#recommended close_value = 4
+#if close_gap the img out of this def then set close_value 0
+#output a set of tuples like ( center, radius )
+def get_lake_strandline( img, close_value = 4, img_show = None ):
+    '''识别湖岸线'''
+    
+    #当直接没传入close_value而传入img_show的情况下
+    if isinstance(close_value, np.ndarray):
+        img_show = close_value
+        close_value = 4
+    
+    #当在函数外已经进行缺口闭合处理的情况下close_value为0
+    if close_value > 0:
+        img = close_gap( img, close_value )
+    
+    #如果传入了img_show则需要表现识别的过程线条到img_show上
+    if img_show == None:
+        contours = get_contour_cornerlists( img )
+    else:
+        contours = get_contour_cornerlists( img, img_show )
 
+    #内岛的外轮廓已经被用
+    #hierarchy元素的第四个数字的值不等于-1或者等于8这个条件进行否定了
+    #目前返回的contours中并未标出是湖岸线还是内岛的岸线
+    return contours
+
+
+#input a gray img <"numpy.ndarray">
+#input close_value is used to forbid some small crossing
+#recommended close_value = 10
+#if close_gap the img out of this def then set close_value 0
+#output a set of tuples like ( center, radius )
+def get_lake_strandline( img, close_value = 10, img_show = None ):
+    '''识别树丛云线'''
+    
+    #当直接没传入close_value而传入img_show的情况下
+    if isinstance(close_value, np.ndarray):
+        img_show = close_value
+        close_value = 10
+    
+    #当在函数外已经进行缺口闭合处理的情况下close_value为0
+    if close_value > 0:
+        img = close_gap( img, close_value )
+    
+    #如果传入了img_show则需要表现识别的过程线条到img_show上
+    if img_show == None:
+        contours = get_contour_cornerlists( img )
+    else:
+        contours = get_contour_cornerlists( img, img_show )
+    
+    #目前返回的云线是最原始的识别数据，尚未进行云线优化
+    #将来可以进行的优化有：最近点的距离、云线数据格式等
+    return contours
 
 
 
 ########## archi-draw ##########################
 '''绘图模块'''
 ########## archi-draw ##########################
+
 
 
 #input angle<"float">
@@ -406,7 +482,7 @@ def draw_test(angle, rectangle_list, img1):
     for kk in range(len(rectangle_list)):
         points = np.int0(np.around(rectangle_list[kk])) #int(four points of rect)
         cv2.polylines(img1,[points],True,(255,255,255),2) #draw rects
-        if co.dis_lianbiao(points[0],points[1])<co.dis_lianbiao(points[2],points[1]):
+        if co.dis_lianbiao(points[0],points[1]) < co.dis_lianbiao(points[2],points[1]):
             #heng
             cv2.line(img1,co.cenint(points[0],points[1]),co.cenint(points[2],points[3]),(255,255,255),1)
             pp1=co.cen(points[0],points[1])
@@ -428,12 +504,23 @@ def draw_test(angle, rectangle_list, img1):
 ###Begin the main project###
 ###Just have a test###
 if __name__ == "__main__":
-    img = open_image('./cir.png')
+    img = open_image('./yunxian.png')
     img_black_paper = create_paper(img.shape)
     #img_threshold = get_black_and_white_image(img, 200) #发现没有必要二值化处理
     img_gray = get_gray_image(img)
-    #test to get round
-    circle_tree_set = get_circle_tree( img_gray )
+    
+    
+    #test to get lake
+    lake_strandlines = get_lake_strandline( img_gray,10,img )
+    for lake in lake_strandlines:
+        #print lake
+        cv2.polylines(img_black_paper, [np.int0(lake)], True, (255,255,255), 2)
+    cv2.ellipse(img_black_paper,(256,256),(10,10),0,270,360,(255,255,0),2)
+    
+    
+    
+    
+    
     '''
 
     img_close = close_gap(img_gray, 3)
@@ -465,5 +552,8 @@ if __name__ == "__main__":
     cv2.namedWindow('img_result')
     cv2.imshow('img_result',img_black_paper)
     '''
+    cv2.imshow('gray', img)
+    cv2.imshow('black', img_black_paper)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+
