@@ -4,7 +4,8 @@ import cv2,cv
 import numpy as np
 import coconut as co
 import math
-import draw.sdxf
+import draw.sdxf as sdxf
+import json
 
 
 LIMIT_CAUGHT = 70
@@ -434,7 +435,7 @@ def get_lake_strandline( img, close_value = 4, img_show = None ):
 #recommended close_value = 10
 #if close_gap the img out of this def then set close_value 0
 #output a set of tuples like ( center, radius )
-def get_lake_strandline( img, close_value = 10, img_show = None ):
+def get_tree_revclound( img, close_value = 10, img_show = None ):
     '''识别树丛云线'''
     
     #当直接没传入close_value而传入img_show的情况下
@@ -460,74 +461,349 @@ def get_lake_strandline( img, close_value = 10, img_show = None ):
 
 ########## archi-draw ##########################
 '''绘图模块'''
+'''绘图模块分三个绘图平台：
+    dxf格式绘图-->cad平台
+    用openCV绘图而保存成jpg或png等格式的位图
+    使用json进行数据传递然后由客户端利用canvas进行绘图'''
+'''bug:need mirror'''
 ########## archi-draw ##########################
 
 
 
-#input angle<"float">
-#input rectangle_list<"list> [rect1, rect2 ...]
-#input img1<"numpy.ndarray">
-def draw_test(angle, rectangle_list, img1):
-    '''画出识别的结果，测试之用【临时函数，将来可能会删除】'''
-    
-    def tutu(p):
-        return (p[0],p[1])
+#archi-draw with SDXF
+''' 绘制dxf格式的矢量图 '''
+#archi-draw with SDXF
 
-    def intu(p):
-        return((int(round(p[0])),int(round(p[1]))))
 
-    stepW=10 #xianju chuizhipingyi
-    #fourth time round all the rects to draw
+#output a dxf_drawing <type 'instance'>
+def open_dxf():
+    '''生成dxf绘图域,并对图层进行初始化'''
+    drawing = sdxf.Drawing()
+    drawing.layers.append( sdxf.Layer(name='lake' , color=140) )
+    drawing.layers.append( sdxf.Layer(name='tree' , color=4) )
+    drawing.layers.append( sdxf.Layer(name='revclound' , color=3) )
+    drawing.layers.append( sdxf.Layer(name='roof_deck' , color=7) )
+    drawing.layers.append( sdxf.Layer(name='roof_tile' , color=254) )
+    drawing.layers.append( sdxf.Layer(name='roof_outline' , color=6) )
+    return drawing
+
+
+#input a dxf_drawing <type 'instance'>
+#input save_address_name <'string'>
+def save_dxf( drawing, save_address_name ):
+    '''将指定的drawing域保存成dxf格式文件'''
+    drawing.saveas( save_address_name )
+
+
+#input a dxf_drawing <type 'instance'>
+#input list_of_roof <'set'> or <'list'>
+def dxf_draw_roof( drawing, list_of_roof ):
+    '''在指定drawing域中绘制屋顶'''
     
-    for kk in range(len(rectangle_list)):
-        points = np.int0(np.around(rectangle_list[kk])) #int(four points of rect)
-        cv2.polylines(img1,[points],True,(255,255,255),2) #draw rects
-        if co.dis_lianbiao(points[0],points[1]) < co.dis_lianbiao(points[2],points[1]):
-            #heng
-            cv2.line(img1,co.cenint(points[0],points[1]),co.cenint(points[2],points[3]),(255,255,255),1)
-            pp1=co.cen(points[0],points[1])
-            pp2=tutu(points[1])
-            while pp2[0]+stepW*math.cos(math.radians(angle))<points[2][0]:
-                pp1,pp2=co.right_copy(pp1,pp2,stepW,angle)
-                cv2.line(img1,intu(pp1),intu(pp2),(255,255,255),1)
+    #画屋顶檩条的闭包
+    def draw_roof_tile(p0, p1, p2, p3, min_dist = 6, opp=1):
+        
+        if opp == 1:
+            draw_roof_tile(p0, p1, p2, p3, 3*min_dist, opp=-1)
+        #initialization
+        if p0[1]*opp < p1[1]*opp:
+            p1, p2 = co.cen( p0, p1 ), co.cen( p2, p3 )
         else:
-            #zong
-            cv2.line(img1,co.cenint(points[2],points[1]),co.cenint(points[0],points[3]),(255,255,255),1)
-            pp1=co.cen(points[2],points[1])
-            pp2=tutu(points[1])
-            while pp2[1]+stepW*math.sin(math.radians(angle)+90)<points[0][1]:
-                pp1,pp2=co.right1_copy(pp1,pp2,stepW,angle)
-                cv2.line(img1,intu(pp1),intu(pp2),(255,255,255),1)
+            p0, p3 = co.cen( p0, p1 ), co.cen( p2, p3 )
+
+        tile_dist = min_dist
+        tile_dist_max = co.dis_lianbiao( p0, p3 )
+        while 1:
+            if tile_dist >= tile_dist_max: break
+            point1 = ( tile_dist*(p3[0]-p0[0])/tile_dist_max+p0[0], tile_dist*(p3[1]-p0[1])/tile_dist_max+p0[1] )
+            point2 = ( tile_dist*(p2[0]-p1[0])/tile_dist_max+p1[0], tile_dist*(p2[1]-p1[1])/tile_dist_max+p1[1] )
+            drawing.append( sdxf.Line(points=[point1, point2], layer='roof_tile') )
+            tile_dist = tile_dist + min_dist
+    
+    #画屋顶主楞骨的闭包
+    def draw_roof_deck():
+        #比较长短
+        if co.dis_lianbiao(roof[1],roof[2]) > co.dis_lianbiao(roof[2],roof[3]):
+            drawing.append( sdxf.Line(points=[co.cen(roof[2],roof[3]),co.cen(roof[1],roof[0])], layer='roof_deck') )
+            draw_roof_tile( roof[2], roof[3], roof[0], roof[1] )
+        else:
+            drawing.append( sdxf.Line(points=[co.cen(roof[1],roof[2]),co.cen(roof[3],roof[0])], layer='roof_deck') )
+            draw_roof_tile( roof[3], roof[0], roof[1], roof[2] )
+
+    for roof in list_of_roof:
+        drawing.append( sdxf.PolyLine(points=roof, flag=1, layer='roof_outline') )
+        draw_roof_deck()
+
+
+#input a dxf_drawing <type 'instance'>
+#input list_of_tree means circles <'list'> or <'set'>
+def dxf_draw_tree( drawing, list_of_tree ):
+    '''在指定drawing域中绘制点树'''
+    for circle in list_of_tree:
+        drawing.append( sdxf.Circle(circle[0], circle[1], layer='tree') )
+
+
+#input a dxf_drawing <type 'instance'>
+#input list_of_lake mean lake_strandlines <'list'> or <'set'>
+def dxf_draw_lake( drawing, list_of_lake):
+    '''在指定drawing域中绘制湖岸线'''
+    for contour in list_of_lake:
+        drawing.append( sdxf.PolyLine(points=contour, flag=1, layer='lake') )
+
+
+#input a dxf_drawing <type 'instance'>
+#input list_of_revcloud <'list'> or <'set'>
+def dxf_draw_revclound( drawing, list_of_revcloud ):
+    '''在指定drawing域中绘制修行云线'''
+    for contour in list_of_revcloud:
+        drawing.append( sdxf.PolyLine(points=contour, flag=1, layer='revclound') )
+
+
+
+#archi-draw with Canvas
+''' 使用Canvas进行绘图 '''
+#使用Js调用H5的canvas元素进行绘图
+#所以一般情况是服务器识别数据然后客户端绘图
+#有两种方法：
+#①是服务器解析好识别的数据，
+#直接传递简单的绘图命令给客户端；
+#②服务器直接传递未深入解析的识别数据，
+#由客户端通过js脚本来完成如何绘图的解析工作。
+#为了减轻服务器的负担与减少传递信息的量，
+#上述②方法更优。
+#信息传递的方式：Json格式的数据传递
+#在archi.py中的canvas绘图功能中，
+#archi.py提供函数-->generate JSON
+#用来产生标准绘图格式的json数据的函数
+#为了更容易地调用canvas绘图
+#笔者在processing和processingJS的基础上
+#开发的prcessingX.js是直接利用js调用canvas元素
+#语法上与processing一致，局部进行了改进
+#processingX.js的绘图函数部分已经基本完善
+#processingX的项目托管在github的仓库地址是：
+#https://github.com/zhangxiansheng/processingjs
+#引用processingX.js可直接在html文件中外链js脚本如下：
+#<script src="http://zhangxiansheng.github.io/processingX.js"></script>
+#archi-draw with Canvas
+
+
+#input list_of_roof
+#output a json string
+#{ "kind" : "roof",
+#  "four_points": [
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4] ],
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4] ],
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4] ],
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4] ],
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4] ],
+#                    ...
+#                 ]
+def get_roof_json(list_of_roof, need_dic=None ):
+    '''返回roof类型的JSON数据'''
+    
+    #initialize "kind"
+    dic_result = { 'kind' : 'roof', 'four_points' : [] }
+    
+    #make points all be list not tuple
+    #need int not float
+    for roof in list_of_roof:
+        tmp = [ [int(round(point[0])), int(round(point[1])) ] for point in roof ]
+        dic_result['four_points'].append(tmp)
+    
+    #if user need a dic not a json
+    if need_dic == 'dic':return dic_result
+
+    return json.dumps(dic_result)
+
+
+#input list_of_tree
+#output a json string
+#{ "kind" : "tree",
+#  "circle": [
+#                [ x1, y1, r1 ],
+#                [ x2, y2, r2 ],
+#                [ x3, y3, r3 ],
+#                [ x4, y4, r4 ],
+#                [ x5, y5, r5 ],
+#                ...
+#            ]
+def get_tree_json(list_of_tree, need_dic=None ):
+    '''返回tree类型的JSON数据'''
+    
+    #initialize "kind"
+    dic_result = { 'kind' : 'tree' }
+    
+    #make points all be list not tuple
+    #need int not float
+    dic_result['circle'] = [ [int(round(circle[0][0])), int(round(circle[0][1])), int(round(circle[1]))]  for circle in list_of_tree ]
+    
+    #if user need a dic not a json
+    if need_dic == 'dic':return dic_result
+    
+    return json.dumps(dic_result)
+
+
+#input list_of_lake
+#output a json string
+#{ "kind" : "lake",
+#  "lake_points": [
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4]... ],
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4]... ],
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4]... ],
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4]... ],
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4]... ],
+#                    ...
+#                 ]
+def get_lake_json(list_of_lake, need_dic=None ):
+    '''返回lake类型的JSON数据'''
+    
+    #initialize "kind"
+    dic_result = { 'kind' : 'lake', 'lake_points' : [] }
+    
+    #make points all be list not tuple
+    #need int not float
+    for lake in list_of_lake:
+        tmp = [ [int(round(point[0])), int(round(point[1])) ] for point in lake ]
+        dic_result['lake_points'].append(tmp)
+    
+    #if user need a dic not a json
+    if need_dic == 'dic':return dic_result
+    
+    return json.dumps(dic_result)
+
+
+#input list_of_revclound
+#output a json string
+#{ "kind" : "lake",
+#  "revclound_points": [
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4]... ],
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4]... ],
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4]... ],
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4]... ],
+#                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4]... ],
+#                    ...
+#                 ]
+def get_revclound_json(list_of_revclound, need_dic=None ):
+    '''返回lake类型的JSON数据'''
+    
+    #initialize "kind"
+    dic_result = { 'kind' : 'revclound', 'revclound_points' : [] }
+    
+    #make points all be list not tuple
+    #need int not float
+    for revclound in list_of_revclound:
+        tmp = [ [int(round(point[0])), int(round(point[1])) ] for point in revclound ]
+        dic_result['revclound_points'].append(tmp)
+    
+    #if user need a dic not a json
+    if need_dic == 'dic':return dic_result
+    
+    return json.dumps(dic_result)
+
+
+
+#archi-draw with OpenCV
+''' 使用OpenCV进行绘图 '''
+#archi-draw with OpenCV
+
+
+
+#input img <'numpy.ndarray'>
+#input list_of_roof <'set'> or <'list'>
+def cv_draw_roof( img, list_of_roof ):
+    '''通过OpenCV在指定img中绘制屋顶'''
+    
+    #画屋顶檩条的闭包
+    def draw_roof_tile(p0, p1, p2, p3, min_dist = 6, opp=1):
+        
+        if opp == 1:
+            draw_roof_tile(p0, p1, p2, p3, 3*min_dist, opp=-1)
+        #initialization
+        if p0[1]*opp < p1[1]*opp:
+            p1, p2 = co.cen( p0, p1 ), co.cen( p2, p3 )
+        else:
+            p0, p3 = co.cen( p0, p1 ), co.cen( p2, p3 )
+        
+        tile_dist = min_dist
+        tile_dist_max = co.dis_lianbiao( p0, p3 )
+        while 1:
+            if tile_dist >= tile_dist_max: break
+            point1 = ( tile_dist*(p3[0]-p0[0])/tile_dist_max+p0[0], tile_dist*(p3[1]-p0[1])/tile_dist_max+p0[1] )
+            point2 = ( tile_dist*(p2[0]-p1[0])/tile_dist_max+p1[0], tile_dist*(p2[1]-p1[1])/tile_dist_max+p1[1] )
+            cv2.polylines(img,[np.int0(np.around([point1, point2]))],True,(255,255,255),1)
+            tile_dist = tile_dist + min_dist
+    
+    #画屋顶主楞骨的闭包
+    def draw_roof_deck():
+        #比较长短
+        if co.dis_lianbiao(roof[1],roof[2]) > co.dis_lianbiao(roof[2],roof[3]):
+            cv2.polylines(img,[np.int0(np.around([co.cen(roof[2],roof[3]),co.cen(roof[1],roof[0])]))],True,(255,255,255),1)
+            draw_roof_tile( roof[2], roof[3], roof[0], roof[1] )
+        else:
+            cv2.polylines(img,[np.int0(np.around([co.cen(roof[1],roof[2]),co.cen(roof[3],roof[0])]))],True,(255,255,255),1)
+            draw_roof_tile( roof[3], roof[0], roof[1], roof[2] )
+    
+    for roof in list_of_roof:
+        cv2.polylines(img,[np.int0(np.around(roof))],True,(255,255,255),2)
+        draw_roof_deck()
+
+
+#input img <'numpy.ndarray'>
+#input list_of_tree means circles <'list'> or <'set'>
+def cv_draw_tree( drawing, list_of_tree ):
+    '''通过OpenCV在指定img中绘制点树'''
+    for circle in list_of_tree:
+        cv2.circle( img, circle[0], circle[1], (255,255,255), 1 )
+
+
+#input img <'numpy.ndarray'>
+#input list_of_lake mean lake_strandlines <'list'> or <'set'>
+def dxf_draw_lake( drawing, list_of_lake):
+    '''通过OpenCV在指定img中绘制湖岸线'''
+    for contour in list_of_lake:
+        cv2.polylines(img,[np.int0(np.around(contour))],True,(255,255,255),2)
+
+
+#input img <'numpy.ndarray'>
+#input list_of_revcloud <'list'> or <'set'>
+def dxf_draw_revclound( drawing, list_of_revcloud ):
+    '''通过OpenCV在指定img中绘制修行云线'''
+    for contour in list_of_revcloud:
+        cv2.polylines(img,[np.int0(np.around(contour))],True,(255,255,255),2)
+
 
 
 
 ###Begin the main project###
 ###Just have a test###
 if __name__ == "__main__":
-    img = open_image('./yunxian.png')
+    img = open_image('./t1.jpg')
     img_black_paper = create_paper(img.shape)
     #img_threshold = get_black_and_white_image(img, 200) #发现没有必要二值化处理
     img_gray = get_gray_image(img)
     
     
+    
     #test to get lake
-    lake_strandlines = get_lake_strandline( img_gray,10,img )
+    '''
+    lake_strandlines = get_lake_strandline( img_gray )
+    
     for lake in lake_strandlines:
         #print lake
         cv2.polylines(img_black_paper, [np.int0(lake)], True, (255,255,255), 2)
     cv2.ellipse(img_black_paper,(256,256),(10,10),0,270,360,(255,255,0),2)
-    
-    
-    
-    
-    
-    '''
 
+
+    dxf_drawing = open_dxf()
+    dxf_draw_lake( dxf_drawing, lake_strandlines )
+    save_dxf(dxf_drawing,'test.dxf')
+    '''
+    
     img_close = close_gap(img_gray, 3)
     
     
-        set_deviation_x(3)
-    set_deviation_y(3)
+    set_deviation_x(9)
+    set_deviation_y(9)
     contours = get_contour_cornerlists(img_close, img)
 
     rectangles = []
@@ -536,24 +812,27 @@ if __name__ == "__main__":
 
     #angle adjust
     rectangles = machine_classify( rectangles )
+    dxf_drawing = open_dxf()
 
     #get the side_point_adjusted four_point_rect
     rectangles_four_points = machine_optimize( rectangles )
-    print rectangles_four_points
+    #print rectangles_four_points
 
-    for i in xrange(len(rectangles)):
-        draw_test(rectangles[i][0][2], rectangles_four_points[i], img_black_paper)
+
+    for i in rectangles_four_points:
+        print get_roof_json(i)
+        cv_draw_roof(img_black_paper,i)
     
 
+    save_dxf(dxf_drawing,'test.dxf')
     save_image('result.jpg',img_black_paper)
 
     cv2.imshow('imgs',img)
     cv2.imshow('img',img_gray)
     cv2.namedWindow('img_result')
     cv2.imshow('img_result',img_black_paper)
-    '''
+
     cv2.imshow('gray', img)
     cv2.imshow('black', img_black_paper)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-
