@@ -12,6 +12,10 @@ LIMIT_CAUGHT = 70
 DEVIATION_BETWEEN_X = 3
 DEVIATION_BETWEEN_Y = 3
 ANGLE_GAP = 12
+PAPER_MODE_DIC = {'A4-h':(1684,1191), 'A4-v':(1191,1684), \
+                  'A3-h':(2382,1684), 'A3-v':(1684,2382), \
+                  'A2-h':(3368,2382), 'A2-v':(2382,3368), \
+                  'A1-h':(4764,3368), 'A1-v':(3368,4764) }
 
 
 #input <"int">
@@ -85,7 +89,7 @@ def create_paper(shape, color=0):
 #black_and_white_image.shape = (width, height, 3) (RGB)
 def get_black_and_white_image(image, threshold_value):
     '''根据阈值将图像二值化处理，即将输入图像处理成黑白图像'''
-    ret,thresh = cv2.threshold(img, threshold_value, 255, cv2.THRESH_BINARY)
+    ret,thresh = cv2.threshold(image, threshold_value, 255, cv2.THRESH_BINARY)
     return thresh
 
 
@@ -161,7 +165,7 @@ def separate_color( img, n ):
                 if j == i: center_copy[j] = [0, 0, 0]
                 else: center_copy[j] = [255, 255, 255]
             res = center_copy[ label_flatten ]
-            result_images_list.append( res.reshape(img.shape) )
+            result_images_list.append( np.uint8(res.reshape(img.shape)) )
 
     return result_images_list
 
@@ -171,11 +175,11 @@ def separate_color( img, n ):
 #input2 img_draw is for the contours to be drawt on
 #output cornerlists=[cornerlist1,cornerlist2...]
 #cornerlist[i]=[(x1,y1), (x2,y2), (x3,y3)...]
-def get_contour_cornerlists(img_gray, img_draw=None):
+def get_contour_cornerlists(img_gray, img_draw=None, thresh_mode=cv2.THRESH_BINARY ):
     '''根据灰度图片识别出所有的内轮廓的点集'''
     global LIMIT_CAUGHT
     cornerlists = []
-    ret, thresh = cv2.threshold(img_gray, 127, 255, cv2.THRESH_BINARY)
+    ret, thresh = cv2.threshold(img_gray, 127, 255, thresh_mode)
     contours, hierarchy = cv2.findContours(thresh,2,1)
     for kk in range(len(contours)):
         cnt = contours[kk]
@@ -512,7 +516,7 @@ def dxf_draw_roof( drawing, list_of_roof ):
             p0, p3 = co.cen( p0, p1 ), co.cen( p2, p3 )
 
         tile_dist = min_dist
-        tile_dist_max = co.dis_lianbiao( p0, p3 )
+        tile_dist_max = co.dis_between_two_points( p0, p3 )
         while 1:
             if tile_dist >= tile_dist_max: break
             point1 = ( tile_dist*(p3[0]-p0[0])/tile_dist_max+p0[0], tile_dist*(p3[1]-p0[1])/tile_dist_max+p0[1] )
@@ -523,7 +527,7 @@ def dxf_draw_roof( drawing, list_of_roof ):
     #画屋顶主楞骨的闭包
     def draw_roof_deck():
         #比较长短
-        if co.dis_lianbiao(roof[1],roof[2]) > co.dis_lianbiao(roof[2],roof[3]):
+        if co.dis_between_two_points(roof[1],roof[2]) > co.dis_between_two_points(roof[2],roof[3]):
             drawing.append( sdxf.Line(points=[co.cen(roof[2],roof[3]),co.cen(roof[1],roof[0])], layer='roof_deck') )
             draw_roof_tile( roof[2], roof[3], roof[0], roof[1] )
         else:
@@ -725,7 +729,7 @@ def cv_draw_roof( img, list_of_roof ):
             p0, p3 = co.cen( p0, p1 ), co.cen( p2, p3 )
         
         tile_dist = min_dist
-        tile_dist_max = co.dis_lianbiao( p0, p3 )
+        tile_dist_max = co.dis_between_two_points( p0, p3 )
         while 1:
             if tile_dist >= tile_dist_max: break
             point1 = ( tile_dist*(p3[0]-p0[0])/tile_dist_max+p0[0], tile_dist*(p3[1]-p0[1])/tile_dist_max+p0[1] )
@@ -736,7 +740,7 @@ def cv_draw_roof( img, list_of_roof ):
     #画屋顶主楞骨的闭包
     def draw_roof_deck():
         #比较长短
-        if co.dis_lianbiao(roof[1],roof[2]) > co.dis_lianbiao(roof[2],roof[3]):
+        if co.dis_between_two_points(roof[1],roof[2]) > co.dis_between_two_points(roof[2],roof[3]):
             cv2.polylines(img,[np.int0(np.around([co.cen(roof[2],roof[3]),co.cen(roof[1],roof[0])]))],True,(255,255,255),1)
             draw_roof_tile( roof[2], roof[3], roof[0], roof[1] )
         else:
@@ -758,7 +762,7 @@ def cv_draw_tree( drawing, list_of_tree ):
 
 #input img <'numpy.ndarray'>
 #input list_of_lake mean lake_strandlines <'list'> or <'set'>
-def dxf_draw_lake( drawing, list_of_lake):
+def dxf_draw_lake( drawing, list_of_lake ):
     '''通过OpenCV在指定img中绘制湖岸线'''
     for contour in list_of_lake:
         cv2.polylines(img,[np.int0(np.around(contour))],True,(255,255,255),2)
@@ -773,66 +777,127 @@ def dxf_draw_revclound( drawing, list_of_revcloud ):
 
 
 
+#archi-camera Mend Perspective
+'''识别、裁剪、拉伸还原具有透视效果的纸张'''
+#archi-camera Mend Perspective
+
+
+#input a img
+#output a gray img
+def detect_white_paper( img, value=127 ):
+    '''用颜色来感应出白纸'''
+    img = np.int32(img)
+    b, g, r = cv2.split(img)
+    return np.where( (b>value) & (g>value) & (r>value) & (abs(b-g)+abs(b-r)+abs(g-r)<110), np.uint8(0), np.uint8(255))
+
+
+#input a gray img
+#output a gray img
+def zyw_denoising( img, fade_value=13, rise_value=66 ):
+    '''苇式去噪法'''
+    img = get_thin(img, fade_value )
+    img = get_thick(img, fade_value + rise_value )
+    img = get_thin(img, rise_value )
+    return img
+
+
+#input a gray img
+#output the longest one of contours
+#the longest one means paper
+def find_paper_contour( img ):
+    '''识别纸张的轮廓线'''
+    ret, thresh = cv2.threshold(img, 127, 255, 1) #二值化处理
+    contours, hierarchy = cv2.findContours(thresh,2,1) #轮廓线识别
+    
+    #get the longest contour and reshape it
+    longest = 0
+
+    for i in xrange(len(contours)):
+        if len(contours[i]) > longest:
+            longest, which = len(contours[i]), i
+
+    return contours[i].reshape((longest,2))
+
+
+#input a contour
+#output four points
+def find_contour_points( contour ):
+    '''识别轮廓线4个角点'''
+    most_up, most_left = 999999, 999999
+    most_down, most_right = 0, 0
+    
+    most_left_up, most_right_up = 999999, 999999
+    most_left_down, most_right_down = 0, 0
+    
+    for p in contour:
+        #kind2
+        if sum(p) > most_right_down: most_right_down, right_down = sum(p), p
+        if sum(p) < most_left_up: most_left_up, left_up = sum(p), p
+        if p[1]+img.shape[1]-p[0] < most_right_up: most_right_up, right_up = p[1]+img.shape[1]-p[0], p
+        if p[1]+img.shape[1]-p[0] > most_left_down: most_left_down, left_down = p[1]+img.shape[1]-p[0], p
+        
+        #kind1
+        if p[0] < most_left: most_left, left_point = p[0], p
+        if p[0] > most_right: most_right, right_point = p[0], p
+        if p[1] < most_up: most_up, up_point = p[1], p
+        if p[1] > most_down: most_down, down_point = p[1], p
+    
+    #up_left up_right down_right down_left & up right down left
+    list1 = [ left_up, right_up, right_down, left_down ]
+    list2 = [ up_point, right_point, down_point, left_point ]
+    
+    return co.get_paper_points(list1, list2)
+
+
+#input points [ up_left_point, up_right_point, down_right_point, down_left_point ]
+#output image
+def perspective_transform( img, points, paper_width=1684, paper_height=1191, paper_mode='A4-h'):
+    '''透视转换成正视'''
+    global PAPER_MODE_DIC
+    
+    if paper_mode != 'A4-h':
+        paper_width, paper_height = PAPER_MODE_DIC[ paper_mode ]
+
+    points[2], points[3] = points[3], points[2]
+    if (float(paper_width)/paper_height - 1 )*(co.dis_between_two_points(points[0],points[1])/co.dis_between_two_points(points[0],points[2]) -1 ) < 0 :
+        points[0], points[1], points[2], points[3] = points[2], points[0], points[3], points[1]
+
+    pts1 = np.float32( points )
+    pts2 = np.float32( [[0,0],[paper_width,0],[0,paper_height],[paper_width,paper_height]] )
+    M = cv2.getPerspectiveTransform( pts1, pts2 )
+    dst = cv2.warpPerspective( img, M, (1684,1191) )
+    return dst
+
+
 
 ###Begin the main project###
 ###Just have a test###
 if __name__ == "__main__":
-    img = open_image('./t1.jpg')
-    img_black_paper = create_paper(img.shape)
-    #img_threshold = get_black_and_white_image(img, 200) #发现没有必要二值化处理
+    img_origin = open_image('./t2.png')
+    shape = img_origin.shape
+    img = detect_white_paper(img_origin)
+    img = zyw_denoising(img)
+    contour = find_paper_contour(img)
+    points = find_contour_points(contour)
+    
+    img = perspective_transform( img_origin, points)
+    
+    img = separate_color( img, 1 )[0]
+    
     img_gray = get_gray_image(img)
     
+    img_gray = close_gap( img_gray, 9 )
+    print type(img_gray),img_gray.shape,img_gray.dtype
     
+    contours = get_contour_cornerlists(img_gray, img_draw=img_gray)
+    print len(contours)
     
-    #test to get lake
-    '''
-    lake_strandlines = get_lake_strandline( img_gray )
-    
-    for lake in lake_strandlines:
-        #print lake
-        cv2.polylines(img_black_paper, [np.int0(lake)], True, (255,255,255), 2)
-    cv2.ellipse(img_black_paper,(256,256),(10,10),0,270,360,(255,255,0),2)
-
-
-    dxf_drawing = open_dxf()
-    dxf_draw_lake( dxf_drawing, lake_strandlines )
-    save_dxf(dxf_drawing,'test.dxf')
-    '''
-    
-    img_close = close_gap(img_gray, 3)
-    
-    
-    set_deviation_x(9)
-    set_deviation_y(9)
-    contours = get_contour_cornerlists(img_close, img)
-
-    rectangles = []
-    for contour in contours:
-        rectangles.append( get_rectangle(contour) )
-
-    #angle adjust
-    rectangles = machine_classify( rectangles )
-    dxf_drawing = open_dxf()
-
-    #get the side_point_adjusted four_point_rect
-    rectangles_four_points = machine_optimize( rectangles )
-    #print rectangles_four_points
-
-
-    for i in rectangles_four_points:
-        print get_roof_json(i)
-        cv_draw_roof(img_black_paper,i)
-    
-
-    save_dxf(dxf_drawing,'test.dxf')
-    save_image('result.jpg',img_black_paper)
-
-    cv2.imshow('imgs',img)
-    cv2.imshow('img',img_gray)
-    cv2.namedWindow('img_result')
-    cv2.imshow('img_result',img_black_paper)
-
-    cv2.imshow('gray', img)
-    cv2.imshow('black', img_black_paper)
+    cv2.imshow("jingguan",img_gray)
     cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    cv2.imwrite('tmp.jpg',img_gray)
+    
+    
+
+
+
+
