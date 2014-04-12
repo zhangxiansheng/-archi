@@ -8,7 +8,6 @@ import draw.sdxf as sdxf
 import json
 
 
-LIMIT_CAUGHT = 70
 DEVIATION_BETWEEN_X = 3
 DEVIATION_BETWEEN_Y = 3
 ANGLE_GAP = 12
@@ -16,13 +15,6 @@ PAPER_MODE_DIC = {'A4-h':(1684,1191), 'A4-v':(1191,1684), \
                   'A3-h':(2382,1684), 'A3-v':(1684,2382), \
                   'A2-h':(3368,2382), 'A2-v':(2382,3368), \
                   'A1-h':(4764,3368), 'A1-v':(3368,4764) }
-
-
-#input <"int">
-def set_limit_caught(new_limit):
-    '''重新指定识别轮廓的识别下限'''
-    global LIMIT_CAUGHT
-    LIMIT_CAUGHT = new_limit
 
 
 #input <"float"> or <"int">
@@ -147,10 +139,15 @@ def separate_color( img, n ):
     ret,label,center=cv2.kmeans( Z, k, criteria, 10, cv2.KMEANS_RANDOM_CENTERS )
     
     #find which is white
-    near_white = 120
+    near_white = 500
+    near_self = 120
     near_i = None
+    
+    def volatility(c):
+        return abs(c[0]-c[1]) + abs(c[1]-c[2]) + abs(c[0]-c[2])
+    
     for i in xrange(k):
-        if 255*3 - sum(center[i]) < near_white:
+        if 255*3 - sum(center[i]) < near_white and volatility(center[i]) < near_self:
             near_white = 255*3 - sum(center[i])
             near_i = i
     result_images_list = []
@@ -175,16 +172,15 @@ def separate_color( img, n ):
 #input2 img_draw is for the contours to be drawt on
 #output cornerlists=[cornerlist1,cornerlist2...]
 #cornerlist[i]=[(x1,y1), (x2,y2), (x3,y3)...]
-def get_contour_cornerlists(img_gray, img_draw=None, thresh_mode=cv2.THRESH_BINARY ):
+def get_contour_cornerlists(img_gray, img_draw=None, thresh_mode=cv2.THRESH_BINARY, limit_caught=70 ):
     '''根据灰度图片识别出所有的内轮廓的点集'''
-    global LIMIT_CAUGHT
     cornerlists = []
     ret, thresh = cv2.threshold(img_gray, 127, 255, thresh_mode)
     contours, hierarchy = cv2.findContours(thresh,2,1)
     for kk in range(len(contours)):
         cnt = contours[kk]
-        #set_limit_caught() can change the value of LIMIT_CAUGHT
-        if len(cnt) > LIMIT_CAUGHT:
+        #set_limit_caught() can change the value of limit_caught
+        if len(cnt) > limit_caught:
             #-1是为了排除外轮廓，8或者写成不等于-1是为了排除内岛
             if hierarchy[0][kk][0] == -1 or hierarchy[0][kk][3] != -1:
                 break
@@ -382,7 +378,7 @@ def adjust_rect_list(angle, rectangle_list):
 #recommended close_value = 20
 #if close_gap the img out of this def then set close_value 0
 #output a set of tuples like ( center, radius )
-def get_circle_tree( img, close_value = 20, img_show = None ):
+def get_circle_tree( img, close_value = 20, img_show = None, limit_caught=70 ):
     '''识别点状树木图标'''
     
     #当直接没传入close_value而传入img_show的情况下
@@ -396,9 +392,9 @@ def get_circle_tree( img, close_value = 20, img_show = None ):
     
     #如果传入了img_show则需要表现识别的过程线条到img_show上
     if img_show:
-        contours = get_contour_cornerlists( img )
+        contours = get_contour_cornerlists( img, limit_caught=limit_caught )
     else:
-        contours = get_contour_cornerlists( img, img_show )
+        contours = get_contour_cornerlists( img, img_draw=img_show, limit_caught=limit_caught )
 
     rectangles = [ get_rectangle(contour) for contour in contours ]
     circles = set( [ ( rect[0], max(rect[1])/2.0 ) for rect in rectangles ] )
@@ -734,46 +730,46 @@ def cv_draw_roof( img, list_of_roof ):
             if tile_dist >= tile_dist_max: break
             point1 = ( tile_dist*(p3[0]-p0[0])/tile_dist_max+p0[0], tile_dist*(p3[1]-p0[1])/tile_dist_max+p0[1] )
             point2 = ( tile_dist*(p2[0]-p1[0])/tile_dist_max+p1[0], tile_dist*(p2[1]-p1[1])/tile_dist_max+p1[1] )
-            cv2.polylines(img,[np.int0(np.around([point1, point2]))],True,(255,255,255),1)
+            cv2.polylines(img,[np.int32(np.around([point1, point2]))],True,(255,255,255),1)
             tile_dist = tile_dist + min_dist
     
     #画屋顶主楞骨的闭包
     def draw_roof_deck():
         #比较长短
         if co.dis_between_two_points(roof[1],roof[2]) > co.dis_between_two_points(roof[2],roof[3]):
-            cv2.polylines(img,[np.int0(np.around([co.cen(roof[2],roof[3]),co.cen(roof[1],roof[0])]))],True,(255,255,255),1)
+            cv2.polylines(img,[np.int32(np.around([co.cen(roof[2],roof[3]),co.cen(roof[1],roof[0])]))],True,(255,255,255),1)
             draw_roof_tile( roof[2], roof[3], roof[0], roof[1] )
         else:
-            cv2.polylines(img,[np.int0(np.around([co.cen(roof[1],roof[2]),co.cen(roof[3],roof[0])]))],True,(255,255,255),1)
+            cv2.polylines(img,[np.int32(np.around([co.cen(roof[1],roof[2]),co.cen(roof[3],roof[0])]))],True,(255,255,255),1)
             draw_roof_tile( roof[3], roof[0], roof[1], roof[2] )
     
     for roof in list_of_roof:
-        cv2.polylines(img,[np.int0(np.around(roof))],True,(255,255,255),2)
+        cv2.polylines(img,[np.int32(np.around(roof))],True,(255,255,255),2)
         draw_roof_deck()
 
 
 #input img <'numpy.ndarray'>
 #input list_of_tree means circles <'list'> or <'set'>
-def cv_draw_tree( drawing, list_of_tree ):
+def cv_draw_tree( img, list_of_tree ):
     '''通过OpenCV在指定img中绘制点树'''
     for circle in list_of_tree:
-        cv2.circle( img, circle[0], circle[1], (255,255,255), 1 )
+        cv2.circle( img, ( int(round(circle[0][0])), int(round(circle[0][1])) ), int(round(circle[1])), (255,255,255), 1 )
 
 
 #input img <'numpy.ndarray'>
 #input list_of_lake mean lake_strandlines <'list'> or <'set'>
-def dxf_draw_lake( drawing, list_of_lake ):
+def cv_draw_lake( img, list_of_lake ):
     '''通过OpenCV在指定img中绘制湖岸线'''
     for contour in list_of_lake:
-        cv2.polylines(img,[np.int0(np.around(contour))],True,(255,255,255),2)
+        cv2.polylines(img,[np.int32(np.around(contour))],True,(255,255,255),2)
 
 
 #input img <'numpy.ndarray'>
 #input list_of_revcloud <'list'> or <'set'>
-def dxf_draw_revclound( drawing, list_of_revcloud ):
+def cv_draw_revclound( img, list_of_revcloud ):
     '''通过OpenCV在指定img中绘制修行云线'''
     for contour in list_of_revcloud:
-        cv2.polylines(img,[np.int0(np.around(contour))],True,(255,255,255),2)
+        cv2.polylines(img,[np.int32(np.around(contour))],True,(255,255,255),2)
 
 
 
@@ -816,11 +812,13 @@ def find_paper_contour( img ):
         if len(contours[i]) > longest:
             longest, which = len(contours[i]), i
 
-    return contours[i].reshape((longest,2))
+    return contours[which].reshape((longest,2))
 
 
 #input a contour
 #output four points
+#[(x1,y1),(x2,y2),(x3,y3),(x4,y4)]
+#x,y numpy.float64
 def find_contour_points( contour ):
     '''识别轮廓线4个角点'''
     most_up, most_left = 999999, 999999
@@ -833,8 +831,8 @@ def find_contour_points( contour ):
         #kind2
         if sum(p) > most_right_down: most_right_down, right_down = sum(p), p
         if sum(p) < most_left_up: most_left_up, left_up = sum(p), p
-        if p[1]+img.shape[1]-p[0] < most_right_up: most_right_up, right_up = p[1]+img.shape[1]-p[0], p
-        if p[1]+img.shape[1]-p[0] > most_left_down: most_left_down, left_down = p[1]+img.shape[1]-p[0], p
+        if p[1]+10000-p[0] < most_right_up: most_right_up, right_up = p[1]+10000-p[0], p
+        if p[1]+10000-p[0] > most_left_down: most_left_down, left_down = p[1]+10000-p[0], p
         
         #kind1
         if p[0] < most_left: most_left, left_point = p[0], p
