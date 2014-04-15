@@ -68,7 +68,7 @@ def save_image(address,img):
 #copy img.shape to create a vain paper
 #0 mains Black and 255 mains White
 #input1 shape<"tuple"> = <"numpy.ndarray">.shape = (width, height, <3 is the Count of BGR>)
-#input2 color<"int"> = 0-255
+#input2 color<"int"> = 0-255 or <"tuple"> = (255, 0, 255)
 def create_paper(shape, color=0):
     '''根据长宽与颜色来预设生成一张画布'''
     return np.zeros(shape, np.uint8) + color
@@ -800,9 +800,9 @@ def zyw_denoising( img, fade_value=13, rise_value=66 ):
 #input a gray img
 #output the longest one of contours
 #the longest one means paper
-def find_paper_contour( img ):
+def find_paper_contour( img, thresh_mode=1 ):
     '''识别纸张的轮廓线'''
-    ret, thresh = cv2.threshold(img, 127, 255, 1) #二值化处理
+    ret, thresh = cv2.threshold(img, 127, 255, thresh_mode) #二值化处理
     contours, hierarchy = cv2.findContours(thresh,2,1) #轮廓线识别
     
     #get the longest contour and reshape it
