@@ -18,7 +18,7 @@ NumPy is easy to install, <code>$pip install numpy</code> is the best way.<br>
 If you use Mac OS system, we recommend much the use of HomeBrew to install opencv, <br>
 just one step, <code>$brew install opencv</code>.If you are using Ubuntu, you can use pip or apt-get to install opencv. <br>
 On mac, pip can't install opencv.<br>
-There are two ways to install archicv, <code>$pip install archicv</code> and <code>$easy_install archicv</code>, pip is more recommended.
+There are three ways to install archicv, <code>$pip install archicv</code> and <code>$easy_install archicv</code>, pip is more recommended. The third way is download the setup package of archicv from <a href="https://pypi.python.org/pypi/archicv">pypi</a>, and install it manually.
 </p>
 
 <b>&nbsp;pip:</b>
@@ -35,6 +35,15 @@ $pip install numpy
 $brew install opencv
 
 $easy_install archicv
+</pre>
+<b>&nbsp;manually install:</b>
+<pre>
+$pip install numpy
+$brew install opencv
+    
+$tar -xf archicv archicv-0.0.1.18.32.tar.gz
+$cd archicv-0.0.1.18.32
+$python setup.py install
 </pre>
 <br>
 <p>
