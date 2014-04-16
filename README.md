@@ -464,7 +464,7 @@ save_dxf( tmp_dxf, 'lake_result.dxf' )
 
 
 <h2>Some Hints</h2>
-Some tips for deep user. More details are in the <a href="/reference">reference</a>.
+Some tips for deep user. More details are in the <a href="http://www.caup.cn/reference">reference</a>.
 <hr>
 <p>
 1. This is a simple library and it is rather recommended to master every api in reference. Different api can combine to get different performance. It is worth dive into archicv api, especially for landscape architect.<br>
