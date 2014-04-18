@@ -405,7 +405,7 @@ def get_circle_tree( img, close_value = 20, img_show = None, limit_caught=70 ):
 #input close_value is used to forbid some small crossing
 #recommended close_value = 4
 #if close_gap the img out of this def then set close_value 0
-#output a set of tuples like ( center, radius )
+#output a list of contour points
 def get_lake_strandline( img, close_value = 4, img_show = None ):
     '''识别湖岸线'''
     
@@ -434,7 +434,7 @@ def get_lake_strandline( img, close_value = 4, img_show = None ):
 #input close_value is used to forbid some small crossing
 #recommended close_value = 10
 #if close_gap the img out of this def then set close_value 0
-#output a set of tuples like ( center, radius )
+#output a list of contour points
 def get_tree_revclound( img, close_value = 10, img_show = None ):
     '''识别树丛云线'''
     
