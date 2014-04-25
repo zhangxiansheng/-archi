@@ -552,7 +552,7 @@ def dxf_draw_lake( drawing, list_of_lake):
 
 
 #input a dxf_drawing <type 'instance'>
-#input list_of_revcloud <'list'> or <'set'>
+#input list_of_revclound <'list'> or <'set'>
 def dxf_draw_revclound( drawing, list_of_revcloud ):
     '''在指定drawing域中绘制修行云线'''
     for contour in list_of_revcloud:
@@ -674,7 +674,7 @@ def get_lake_json(list_of_lake, need_dic=None ):
 
 #input list_of_revclound
 #output a json string
-#{ "kind" : "lake",
+#{ "kind" : "revclound",
 #  "revclound_points": [
 #                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4]... ],
 #                    [ [x1,y1], [x2,y2], [x3,y3], [x4,y4]... ],
@@ -866,6 +866,119 @@ def perspective_transform( img, points, paper_width=1684, paper_height=1191, pap
     dst = cv2.warpPerspective( img, M, (1684,1191) )
     return dst
 
+
+#archi-pro
+'''建筑布局的深入|迭代递归|测试版|此api不纳入正统'''
+#archi-pro
+
+import random
+
+#input four points = (point1, point2, point3, point4)
+#output a set of tuple = {(p1,p2,p3,p4)...}
+#So sorry for it is complex
+def roof_cut( four_points, bound_A=100, bound_B=230, gap=25, corner=38 ):
+    '''智能分割布局'''
+    global img_black_paper
+    
+    rect_width = co.dis_between_two_points( four_points[0], four_points[1] ) #width
+    rect_height = co.dis_between_two_points( four_points[1], four_points[2] ) #height
+    rect_max_side = max( rect_width, rect_height )
+
+    # Kind1:One building
+    if rect_max_side < bound_A:
+        if min( rect_width, rect_height ) <10: return set()
+        return set([four_points])
+    
+    result_set = set()
+    
+    # Kind2:One side to be a yard or block
+    # Kind3:A yard or a street block
+    if rect_max_side < bound_B:
+        if rect_width < bound_A:
+            # Kind2
+            c_right, c_left, c_up, c_down = co.sidecenter( four_points )
+            center_rect = co.cen(c_up,c_down)
+            tmp_point = co.cen( co.cen(c_down, center_rect), c_up )
+            result_set = result_set.union( roof_cut( co.line_to_rect(c_up, tmp_point, rect_width*0.5*0.8, 0.2*0.5*rect_width ) ) )
+            result_set = result_set.union( roof_cut( co.line_to_rect(tmp_point, c_down, rect_width*0.5 ) ) )
+            return result_set
+            
+        elif rect_height < bound_A:
+            # Kind2
+            c_right, c_left, c_up, c_down = co.sidecenter( four_points )
+            center_rect = co.cen(c_up,c_down)
+            tmp_point = co.cen( co.cen(c_right, center_rect), c_left )
+            result_set = result_set.union( roof_cut( co.line_to_rect(c_left, tmp_point, rect_height*0.5*0.8, 0.2*0.5*rect_height ) ) )
+            result_set = result_set.union( roof_cut( co.line_to_rect(tmp_point, c_right, rect_height*0.5 ) ) )
+            return result_set
+            
+        else:
+            # Kind3
+            if rect_width>2*bound_A or rect_height>2*bound_A:
+                width_cut, height_cut = int(rect_width / bound_A), int(rect_height / bound_A)
+                if width_cut == 0: width_cut = 1
+                if height_cut == 0: height_cut = 1
+                width_side, height_side = rect_width / width_cut, rect_height / height_cut
+                print width_side, height_side,width_cut,height_cut, '&&&&'
+                for i in xrange(width_cut):
+                    for j in xrange(height_cut):
+                        #wrong
+                        p0 = co.get_rect_point( four_points[0], four_points[1], four_points[2], four_points[3], \
+                                   i*width_side, j*height_side )
+                                   
+                        p1 = co.get_rect_point( four_points[0], four_points[1], four_points[2], four_points[3], \
+                                               (i+1)*width_side, j*height_side )
+                                               
+                        p2 = co.get_rect_point( four_points[0], four_points[1], four_points[2], four_points[3], \
+                                               (i+1)*width_side, (j+1)*height_side )
+                        
+                        p3 = co.get_rect_point( four_points[0], four_points[1], four_points[2], four_points[3], \
+                                               i*width_side, (j+1)*height_side )
+                        
+                        result_set = result_set.union( roof_cut( (p0,p1,p2,p3) ) )
+            
+            else:
+                #先加入四个角，再把四边剩下来的递归处理（目前再处理角的问题上不引入折角，未来可以在此处引入）
+                rect_tmp1 = co.rect_scale( four_points[0], four_points[1], four_points[2], four_points[3], corner*random.uniform(1.3,1.8), corner )
+                result_set.add(  rect_tmp1 )
+                rect_tmp2 = co.rect_scale( four_points[1], four_points[2], four_points[3], four_points[0], corner*random.uniform(1.3,1.8), corner )
+                result_set.add(  rect_tmp2 )
+                rect_tmp3 = co.rect_scale( four_points[2], four_points[3], four_points[0], four_points[1], corner*random.uniform(1.3,1.8), corner )
+                result_set.add(  rect_tmp3 )
+                rect_tmp4 = co.rect_scale( four_points[3], four_points[0], four_points[1], four_points[2], corner*random.uniform(1.3,1.8), corner )
+                result_set.add(  rect_tmp4 )
+                
+                #
+                result_set = result_set.union( roof_cut( co.rect_progress(rect_tmp1[1],rect_tmp2[3], co.get_l_point(rect_tmp1[1], rect_tmp1[2], corner*random.uniform(0.6,0.9)) ) ) )
+                result_set = result_set.union( roof_cut( co.rect_progress(rect_tmp2[1],rect_tmp3[3], co.get_l_point(rect_tmp2[1], rect_tmp2[2], corner*random.uniform(0.6,0.9)) ) ) )
+                result_set = result_set.union( roof_cut( co.rect_progress(rect_tmp3[1],rect_tmp4[3], co.get_l_point(rect_tmp3[1], rect_tmp3[2], corner*random.uniform(0.6,0.9)) ) ) )
+                result_set = result_set.union( roof_cut( co.rect_progress(rect_tmp4[1],rect_tmp1[3], co.get_l_point(rect_tmp4[1], rect_tmp4[2], corner*random.uniform(0.6,0.9)) ) ) )
+
+
+            return result_set
+
+    # Kind4:Too Larger
+    width_cut, height_cut = int(rect_width / bound_B + 1), int(rect_height / bound_B + 1)
+    width_side, height_side = (rect_width - gap*(width_cut-1))/width_cut, (rect_height - gap*(height_cut-1))/height_cut
+
+    for i in xrange(width_cut):
+        for j in xrange(height_cut):
+            #wrong
+            p0 = co.get_rect_point( four_points[0], four_points[1], four_points[2], four_points[3], \
+                                   i*(width_side+gap), j*(height_side+gap) )
+                                   
+            p1 = co.get_rect_point( four_points[0], four_points[1], four_points[2], four_points[3], \
+                                   i*(width_side+gap)+width_side, j*(height_side+gap) )
+                                   
+            p2 = co.get_rect_point( four_points[0], four_points[1], four_points[2], four_points[3], \
+                                   i*(width_side+gap)+width_side, j*(height_side+gap)+height_side )
+            
+            p3 = co.get_rect_point( four_points[0], four_points[1], four_points[2], four_points[3], \
+                                   i*(width_side+gap), j*(height_side+gap)+height_side )
+            
+            result_set = result_set.union( roof_cut( (p0,p1,p2,p3) ) )
+
+    return result_set
 
 
 ###Begin the main project###
