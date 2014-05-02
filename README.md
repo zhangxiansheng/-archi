@@ -228,7 +228,7 @@ In this section there are different APIs on feature detection and optimization.
 <hr>
 
 <!--separate_color-->
-<code><b>get_contour_cornerlists(img_gray, img_draw=None, <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;thresh_mode=cv2.THRESH_BINARY, limit_caught=70 )</b></code> <a href="https://github.com/zhangxiansheng/-archi/blob/based-for-website-tmp/archi.py#L175">[source]</a>
+<code><b>get_contour_cornerlists(img_gray, img_draw=None, thresh_mode=cv2.THRESH_BINARY, limit_caught=70 )</b></code> <a href="https://github.com/zhangxiansheng/-archi/blob/based-for-website-tmp/archi.py#L175">[source]</a>
 <br><br>
 <p>
 [<b><i>img_gray</i></b>] is an image numpy.ndarray to input which is grayscale.<br>
@@ -1044,8 +1044,7 @@ four_points = archi.find_contour_points( contour )
 
 
 <!--perspective transform-->
-<code><b>perspective_transform( img, points, <br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;paper_width=1684, paper_height=1191, paper_mode='A4-h')</b></code> <a href="https://github.com/zhangxiansheng/-archi/blob/based-for-website-tmp/archi.py#L852">[source]</a>
+<code><b>perspective_transform( img, points, paper_width=1684, paper_height=1191, paper_mode='A4-h')</b></code> <a href="https://github.com/zhangxiansheng/-archi/blob/based-for-website-tmp/archi.py#L852">[source]</a>
 <br><br>
 <p>
 [<b><i>img</i></b>] is the origin image for perspective transform.<br>
